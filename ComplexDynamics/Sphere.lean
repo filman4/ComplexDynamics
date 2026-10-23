@@ -16,8 +16,6 @@ public import Mathlib.Data.Set.Operations
 public import Mathlib.Data.PFun
 public import Mathlib.Algebra.Group.DivInvMonoid
 
-
-
 /-!
 ## Riemann Sphere
 -/
@@ -50,22 +48,35 @@ def ZeroChartInv : ℂ → RiemannSphere :=
 theorem ZeroChart_right_inv : ZeroChart ∘ ZeroChartInv = id := by
   exact invFun_comp coe_injective
 
+/-Inverse function on the Riemann sphere-/
+def invFun_Sphere : RiemannSphere → RiemannSphere := fun z =>
+  match z with
+  | OnePoint.some z =>
+      if z = 0 then infty
+      else ↑(z)⁻¹
+  | none => ↑(0 : ℂ)
+
 /-The infinite chart `z ↦ 1/z`, its source and target-/
 def InftySource : Set RiemannSphere := {OnePoint.some 0}ᶜ
 
 def InftyTarget : Set ℂ := Set.univ
 
+def InftyChart : RiemannSphere → ℂ := invFun (↑) ∘ invFun_Sphere
+
+def InftyChartInv : ℂ → RiemannSphere := invFun_Sphere ∘ (↑)
+
+/-other results-/
+theorem coe_leftInv : LeftInverse (invFun ((↑) : ℂ → RiemannSphere)) (↑) := by
+  exact leftInverse_invFun coe_injective
+
 theorem InftySource_mem_notZero {z : ℂ} (hz : OnePoint.some z ∈ InftySource) : z ≠ 0 := by
   intro h
   exact hz (congrArg OnePoint.some h)
 
-def InftyChart : RiemannSphere → ℂ
-  | OnePoint.infty => 0
-  | OnePoint.some z => z⁻¹
+theorem InftyChart_infty_eq_zero : InftyChart none = 0 := by
+  simp [InftyChart, comp, invFun_Sphere, invFun]
 
-def InftyChartInv : ℂ → RiemannSphere := fun z => if z = 0 then OnePoint.infty else (z⁻¹ : ℂ)
-
-/-Proving that the finite chart is an open partial homeomorphism-/
+/-Finite chart is an open partial homeomorphism-/
 def ZeroChartIsOpenPartialHomeomorph : OpenPartialHomeomorph RiemannSphere ℂ where
   toPartialHomeomorph := {
     toPartialEquiv := {
@@ -73,39 +84,25 @@ def ZeroChartIsOpenPartialHomeomorph : OpenPartialHomeomorph RiemannSphere ℂ w
       invFun := ZeroChartInv
       source := ZeroSource
       target := ZeroTarget
-      map_source' _ _ := by simp [ZeroTarget]
+      map_source' := by simp [ZeroTarget]
       map_target' z hz := by simp [ZeroChartInv, ZeroSource]
       left_inv' z hz := by
         rcases hz with ⟨w, rfl⟩
-        apply congr
-        rfl
-
-
-        change ZeroChartInv (ZeroChart ∘ OnePoint.some w) = ↑w
-        simp [ZeroChart, invFun_comp (coe_injective)]
-
-
-        cases z with
-        | none =>
-          exact absurd hz (by
-            rw [ZeroSource, compl_infty]
-            exact infty_notMem_range_coe)
-        | some z => rfl
-      right_inv' z hz := by exact invFun_comp coe_injective
+        congr
+        simp [ZeroChart]
+        exact leftInverse_invFun coe_injective w
+      right_inv' z _ := by exact leftInverse_invFun coe_injective z
     }
     continuousOn_toFun := by
-      have hs : ZeroSource = range ((↑) : ℂ → RiemannSphere) := by
-        rw [ZeroSource, compl_infty]
-      rw [hs]
-      exact isOpenMap_coe.continuousOn_range_of_leftInverse
-        (fun z => by simp [ZeroChart])
+      rw [ZeroSource, ZeroChart]
+      exact isOpenMap_coe.continuousOn_range_of_leftInverse (leftInverse_invFun coe_injective)
     continuousOn_invFun := by
       simp [ZeroTarget]
       exact continuous_coe
   }
   open_source := by
     change IsOpen ZeroSource
-    rw [ZeroSource, compl_infty]
+    rw [ZeroSource]
     exact isOpen_range_coe
   open_target := by
     change IsOpen ZeroTarget
@@ -119,66 +116,57 @@ def InftyChartIsOpenPartialHomeomorph : OpenPartialHomeomorph RiemannSphere ℂ 
       invFun := InftyChartInv
       source := InftySource
       target := InftyTarget
-      map_source' _ _ := by simp [InftyTarget]
-      map_target' z _ := by
-        by_cases hz : z = 0 <;> simp [InftyChartInv, hz, InftySource]
+      map_source' := by simp [InftyTarget]
+      map_target' z hz := by
+        simp [InftyChartInv, invFun_Sphere]
+        split <;> simp [InftySource]
+        trivial
       left_inv' z hz := by
         cases z with
         | none =>
-          simp [InftyChart, InftyChartInv, infty]
+          rw [InftyChart_infty_eq_zero]
+          simp [InftyChartInv, invFun_Sphere]
           rfl
         | some z =>
-          rw [InftyChart, InftyChartInv]
-          simp [InftySource_mem_notZero (hz)]
+          simp [InftyChart, InftyChartInv, invFun_Sphere,
+          InftySource_mem_notZero hz, comp, invFun]
           rfl
       right_inv' z hz := by
-        simp [InftyChartInv]
+        simp [InftyChartInv, invFun_Sphere]
         split
-        . simp [InftyChart]
+        . simp [InftyChart, invFun_Sphere, invFun]
           symm
           assumption
-        . simp [InftyChart]
+        . rename_i h1
+          simp [InftyChart, invFun_Sphere, h1, invFun]
     }
-    continuousOn_toFun z hz := by
-      simp [InftySource]
-      have hw : ContinuousAt InftyChart z := by
-        change ContinuousAt (fun z : RiemannSphere =>
-          match z with
-          | OnePoint.infty => (0 : ℂ)
-          | OnePoint.some z => z⁻¹) z
-        cases z with
-        | none =>
-          have ht : Tendsto
-            (InftyChart ∘ (↑))
-            (coclosedCompact ℂ)
-            (𝓝 (InftyChart OnePoint.infty)) := by
-              simp [InftyChart]
-              change (cocompact ℂ).map (InftyChart ∘ (↑)) ≤ 𝓝 0
-              intro s hs
-              simp [InftyChart, Set.preimage_comp_eq, preimage, mem_cocompact]
-              obtain ⟨ε, hε, hεs⟩ := Metric.mem_nhds_iff.mp hs
-
-
-
-        | some z =>
+    continuousOn_toFun := by
+      rw [InftyChart]
+      suffices h1 : ContinuousOn invFun_Sphere InftySource by
+        suffices h2 : ContinuousOn (invFun OnePoint.some) (range OnePoint.some) by
+          suffices h3 : MapsTo invFun_Sphere InftySource (range OnePoint.some) by
+            exact ContinuousOn.comp h2 h1 h3
+          simp [InftySource, compl]
+          intro x hx
+          rcases x with _ | z
+          · simp [invFun_Sphere]
+          · exact ⟨z⁻¹, by simp [invFun_Sphere, InftySource_mem_notZero hx]⟩
+        exact IsOpenMap.continuousOn_range_of_leftInverse (isOpenMap_coe) (coe_leftInv)
+      intro z hz
+      have h4 : ContinuousAt invFun_Sphere z := by
+        sorry
+      have h5 : InftySource ∈ 𝓝 z := by
+        simp [mem_nhds_iff]
+        use InftySource
+        constructor
+        · trivial
+        · constructor
+          · simp? [InftySource]
+          · exact hz
+      exact (continuousWithinAt_iff_continuousAt h5).mpr h4
+    continuousOn_invFun := by
+      sorry
   }
 
-
-
-
-
-
-
-
-
-
-
-  open_source := by
-    change IsOpen ZeroSource
-    rw [ZeroSource, compl_infty]
-    exact isOpen_range_coe
-  open_target := by
-    change IsOpen ZeroTarget
-    exact isOpen_univ
 
 end SphereComplex
